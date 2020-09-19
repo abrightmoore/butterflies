@@ -17,4 +17,6 @@ Click on a filled jar and then the "!" symbol to free the butterfly.
 Butterflies will breed once free if they encounter a suitable mate.
 
 # Open SourceTools used
-+ PyGame
++ PyGame - for display and UI. See https://www.pygame.org/
++ GIMP - for pixel art. See https://www.gimp.org/
+
