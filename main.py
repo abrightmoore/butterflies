@@ -85,6 +85,10 @@ class Thing:
 
     def update(self):
         self.age += 1
+        x, y = self.position
+        x += random.randint(-1,1)
+        y += random.randint(-1,1)
+        self.position = x,y
 
     def draw(self, display):
         # Work out my position in the world, and how it maps onto the display
@@ -109,6 +113,12 @@ class Thing:
             #print "Drawing",self.name
             minx, miny, w, h = bounds
             pygame.draw.rect(display.surface, colour, (minx, miny, w, h), 2)
+
+class Player:
+    def __init__(self):
+        self.score = 0
+        self.inventory = []
+
 
 class Display:
     def __init__(self, world, size, position):
@@ -184,6 +194,8 @@ def main_loop():
         print "New", thing.name, "at", thing.position
 
     # Main loop
+    player = Player()
+
     keepGoing = True
     iterationCount = 0
 
