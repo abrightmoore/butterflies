@@ -3,6 +3,24 @@
 import pygame
 import random
 
+class Colour:
+    def __init__(self):
+        self.colours = {
+            "black": (0x05,0x03,0x09,0xff),
+            "white": (0xff,0xff,0xff,0xff),
+            "green": (0x00, 0xa0, 0x00, 0xff),
+            "red": (0xa0, 0x00, 0x00, 0xff),
+            "brown": (0x70, 0x60, 0x70, 0xff),
+            "transparent": (0x00,0x00,0x00,0xff),
+            "world_background": (0x80,0x70,0x90,0xff)
+        }
+
+    def get(self, key):
+        if key not in self.colours:
+            # Issue a new random colour if we didn't find the requested one
+            self.colours[key] = (128+random.randint(0,127), 128+random.randint(0,127), 128+random.randint(0,127), 255)
+        return self.colours[key]
+
 class Physics:
     def __init__(self):
         pass
@@ -26,7 +44,7 @@ class World:
     def __init__(self, description):
         self.description = description
         self.elements = []
-        self.colour_background = (0x90, 0xa0, 0x80)
+        self.colour_background = Colour().get("world_background")
         self.regions = []
 
     def get_description(self):
@@ -46,8 +64,7 @@ class World:
                 newElements.append(e)
         self.elements = newElements
 
-
-class Thing:
+class Thing(object):
     def __init__(self, world, position, radius, name):
         self.alive = True
         self.world = world
@@ -66,7 +83,7 @@ class Thing:
     def getColourPrimary(self):
         key = "ColourPrimary"
         if key not in self.characteristics:
-            newColour = (128+random.randint(0,127), 128+random.randint(0,127), 128+random.randint(0,127), 255)
+            newColour = Colour().get("random")
             self.characteristics[key] = newColour
         return self.characteristics[key]
 
@@ -85,10 +102,6 @@ class Thing:
 
     def update(self):
         self.age += 1
-        x, y = self.position
-        x += random.randint(-1,1)
-        y += random.randint(-1,1)
-        self.position = x,y
 
     def draw(self, display):
         # Work out my position in the world, and how it maps onto the display
@@ -114,11 +127,57 @@ class Thing:
             minx, miny, w, h = bounds
             pygame.draw.rect(display.surface, colour, (minx, miny, w, h), 2)
 
+class Butterfly(Thing):
+    def __init__(self, display, name, position_limits):
+        position = random.randint(0, display.surface.get_width()),random.randint(0, display.surface.get_height())
+        radius = random.randint(4,32)
+        super(Butterfly,self).__init__(display.world, position, radius, name)
+        self.position_limits = position_limits
+
+        display.world.add_element(self)
+
+    def update(self):
+        self.age += 1
+
+        if self.physics.check_collides(self.position_limits, self.get_rect()):
+            x, y = self.position
+            x += random.randint(-1, 1)
+            y += random.randint(-1, 1)
+
+            self.position = x,y
+        elif self.targeted is None and self.selected is None:
+            self.alive = False # Offscreen... FOREVER!
+            self.targeted = False
+            self.selected = False
+
 class Player:
     def __init__(self):
         self.score = 0
-        self.inventory = []
+        self.inventory = [ Jar(), Jar(), Jar(), Jar()]
+        self.stats = Statistics()
 
+class Jar():
+    def __init__(self):
+        self.contains = None
+        self.uses = 0
+        self.colour = Colour().get("black")
+
+    def place_in(self, thing):
+        # Replace the contents of the jar with the nominated thing
+        # If there was something in the jar to start with, returns that thing
+
+        result = self.contains
+        if self.contains is None:
+            self.contains = thing
+        self.uses += 1
+
+        return result
+
+    def draw(self, display, rect):
+        # Render this jar within the nominated rectangle
+        # ToDo: Replace with art asset
+
+        colour = self.colour
 
 class Display:
     def __init__(self, world, size, position):
@@ -183,15 +242,53 @@ class Display:
 
         return unhandledEvents
 
+class Statistics:
+    def __init__(self):
+        self.select_fail = 0
+        self.select_success = 0
+
+class Tools:
+    def __init__(self, display, name, rect):
+        self.rect = rect
+        print self.rect
+        self.name = name
+        self.alive = True
+        self.colour_background = Colour().get("brown")
+        self.colour_border = Colour().get("black")
+        display.world.add_element(self)
+
+    def get_height(self):
+        x,y,w,h = self.rect
+        return h
+
+    def update(self):
+        pass
+
+    def draw(self, display):
+        display.surface.fill(self.colour_background,self.rect)
+        pygame.draw.rect(display.surface, self.colour_border, self.rect, 2)
+
+    def handle_event_click(self, pos):
+        click_x, click_y = pos
+
+        ox, oy, w, h = self.rect
+
+        if ox <= click_x < ox+w and oy <= click_y < oy+h:
+            return True # Within bounds
+
+    def draw_highlight(self, display, colour):
+        pass
+
 def main_loop():
     display = Display(World("Butterflies"), (800,800), (0,0))
+    ui_colours = Colour()
+    tools = Tools(display, "Toolbar", (0, display.surface.get_height()-(display.surface.get_height()>>3),
+                                       display.surface.get_width(), display.surface.get_height()>>3))
+
+    display_world_region = (0,0,display.surface.get_width(),display.surface.get_height()-tools.get_height())
 
     for i in xrange(0,10):
-        thing = Thing(display.world,
-                        (random.randint(0, display.surface.get_width()),random.randint(0, display.surface.get_height())),
-                         random.randint(4,32), "Thing"+str(i))
-        display.world.add_element(thing)
-        print "New", thing.name, "at", thing.position
+        Butterfly(display, ("Thing"+str(i)), display_world_region)
 
     # Main loop
     player = Player()
@@ -216,16 +313,19 @@ def main_loop():
         # Object rendering
         display.draw()
         # Special UI hints to the player
-        if selected is not None:
-            selected.draw_highlight(display, (0xa0, 0x00, 0x00, 0xff) )  # Red
-        if targeted is not None:
-            targeted.draw_highlight(display, (0x00, 0xa0, 0x00, 0xff) )  # Red
+        if selected is not None and selected.alive:
+            selected.draw_highlight(display, ui_colours.get("red") )  # Red
+        if targeted is not None and targeted.alive:
+            targeted.draw_highlight(display, ui_colours.get("green") )  # Green
 
         for event in display.update():
             if event.type == pygame.QUIT:
                 return False
             elif event.type == pygame.MOUSEMOTION:
                 mousepos = event.pos
+                if selected is not None:
+                    selected.position = mousepos
+                    print selected.position
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:  # 1 == Left
                     for e in display.world.get_elements():
@@ -233,6 +333,7 @@ def main_loop():
                             if( e.handle_event_click(event.pos) ):
                                 selected = e
                                 e.selected = True
+                                player.stats.select_success += 1
                                 break
                 if event.button == 3:  # 3 == Right
                     for e in display.world.get_elements():
@@ -240,6 +341,12 @@ def main_loop():
                             if( e.handle_event_click(event.pos) ):
                                 targeted = e # Keep a record of who is selected. Overwrite duplicates.
                                 e.targeted = e
+                                if targeted == selected:
+                                    selected.selected = None
+                                    selected = None
+                                    targeted.targeted = None
+                                    targeted = None
+                                player.stats.select_success += 1
                                 break
             else:
                 print event # Placeholder
