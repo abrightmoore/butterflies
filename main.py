@@ -3,6 +3,7 @@
 import pygame
 import random
 import math
+import os
 
 class Colour:
     def __init__(self):
@@ -130,8 +131,9 @@ class Thing(object):
 
 class Butterfly(Thing):
     def __init__(self, display, name, position_limits):
+        icon_size = 64
         position = random.randint(0, display.surface.get_width()),random.randint(0, display.surface.get_height())
-        radius = random.randint(4,32)
+        radius = random.randint(icon_size>>1,128)
         super(Butterfly,self).__init__(display.world, position, radius, name)
         self.position_limits = position_limits
 
@@ -144,18 +146,61 @@ class Butterfly(Thing):
         self.sub_wing = []
         self.body = []
         self.antennae = []
-
         self.main_wing, self.sub_wing, self.body, self.antennae = self.create_geometry()
+        jitter = 0.1
+        self.main_wing = self.jitter(self.main_wing, jitter)
+        self.sub_wing = self.jitter(self.sub_wing, jitter)
 
         c = Colour()
         self.colours = []
         for i in xrange(0,random.randint(3,21)):
-            self.colours.append(c.get("random"+str(i)))
+            if random.randint(1,10) == 1:
+                keys = c.colours.keys()
+                self.colours.append(c.get(keys[random.randint(0,len(keys)-1)]))
+            else:
+                self.colours.append(c.get("random"+str(i)))
 
+        self.pattern_scaler = 0.00001 + random.random() * 0.01
         self.texture = self.plot_wing()
         self.texture_body = self.plot_body()
+
+        if os.path.exists("samples"):
+            sample = pygame.Surface((self.texture.get_width(),self.texture.get_height()),pygame.SRCALPHA)
+            sample.blit(self.texture_body,(0,0))
+            sample.blit(self.texture, (0, 0))
+
+            pygame.image.save(pygame.transform.rotate(sample,90), "samples/butterfly_"+self.name+str(random.randint(1000000000,9999999999))+".png")
+
+
         self.wings_up = False
         self.img_render_buffer = pygame.Surface((self.texture.get_width(), self.texture.get_height()), pygame.SRCALPHA)
+
+        self.img_cache = None
+
+
+        icon = pygame.Surface((self.texture.get_width(), self.texture.get_height()), pygame.SRCALPHA)
+        icon.blit(self.texture_body, (0, 0))
+        icon.blit(self.texture, (0, 0))
+        self.icon = pygame.transform.scale(pygame.transform.rotate(icon,90),(icon_size,icon_size))
+
+
+    def jitter(self, points, amount):
+        result = []
+        for (x, y) in points:
+            x = x * 0.9
+            y = y * 0.9
+            x += (random.random() * amount * float(random.randint(-1, 1)))
+            y += (random.random() * amount * float(random.randint(-1, 1)))
+            # print x,y
+
+            # Clamp
+            if x > 1.0: x = 1.0
+            elif x < -1.0: x = -1.0
+            if y > 1.0: y = 1.0
+            elif y < 0.0: y = 0.0
+            result.append((x,y))
+
+        return result
 
     def plot_wing(self):
         #
@@ -166,29 +211,86 @@ class Butterfly(Thing):
         ch = h>>1
 
         img = pygame.Surface((w,h),pygame.SRCALPHA)
+        img1 = pygame.Surface((w, h), pygame.SRCALPHA)
+        img2 = pygame.Surface((w, h), pygame.SRCALPHA)
 
         points = []
         for px, py in self.sub_wing:
             px = px*float(cw)+cw
             py = py*float(ch)+ch
             points.append((px, py)) # Scaled to the dimensions of the image, and offset from centre
-        pygame.draw.polygon(img, self.colours[1], points, 0)
-        pygame.draw.polygon(img, self.colours[0], points, 1)
-
+        pygame.draw.polygon(img1, self.colours[1], points, 0)
+        points_sub = points
 
         points = []
         for px, py in self.main_wing:
             px = px*float(cw)+cw
             py = py*float(ch)+ch
             points.append((px, py)) # Scaled to the dimensions of the image, and offset from centre
-        pygame.draw.polygon(img, self.colours[1], points, 0)
-        pygame.draw.polygon(img, self.colours[0], points, 1)
+        pygame.draw.polygon(img2, self.colours[1], points, 0)
+        points_main = points
 
-        img2 = pygame.transform.flip(img, False, True)
+        offsetx = random.randint(-100,100)
+        offsety = random.randint(-100, 100)
+        for x in xrange(0, img.get_width()):
+            for y in xrange(ch, ch+(img.get_height()>>1)):
+                R,G,B,A = img1.get_at((x,y))
+                if A is not 0:
+                    dx = x-cw+offsetx
+                    dy = y-ch+offsety
+                    val = abs(dx*dy*self.pattern_scaler)
+                    colhere = self.colours[(int(val)%(len(self.colours)-2))+1]
+                    img1.set_at((x,y),colhere)
 
+        offsetx = random.randint(-100,100)
+        offsety = random.randint(-100, 100)
+        for x in xrange(0, img.get_width()):
+            for y in xrange(ch, ch+(img.get_height()>>1)):
+                R,G,B,A = img2.get_at((x,y))
+                if A is not 0:
+                    dx = x-cw+offsetx
+                    dy = y-ch+offsety
+                    val = abs(dx*dy*self.pattern_scaler)
+                    colhere = self.colours[(int(val)%(len(self.colours)-2))+1]
+                    img2.set_at((x,y),colhere)
+
+
+
+        pygame.draw.polygon(img1, self.colours[0], points_sub, 1)
+        pygame.draw.polygon(img2, self.colours[0], points_main, 1)
+        img.blit(img1, (0,0))
         img.blit(img2, (0,0))
 
-        pygame.image.save(img, "butterfly_left_side_"+self.name+".png")
+        if False: # Ignore - complications in implementation for now
+            spot_col = self.colours[random.randint(0,len(self.colours)-1)]
+            col_black = Colour().get("black")
+            if self.size > 16:
+                for i in xrange(0,random.randint(5,18)): # Spots!
+                    radius = random.randint(3,8)
+                    # print radius
+                    posx = random.randint(cw>>1, 3*(cw>>1))
+                    posy = random.randint(0, ch>>1)
+                    r2 = radius*radius
+                    for x in xrange(posx-radius, posx+radius+1):
+                        dx = x - posx
+                        for y in xrange(posy - radius, posy + radius + 1):
+                            if 0 <= x < img.get_width() and 0 <= y < img.get_height():
+                                R, G, B, A = img.get_at((x, y))
+                                if A is not 0:
+                                    print "Hello"
+                                    dy = y-posy
+                                    d2 = dx*dx+dy*dy
+                                    if d2 < r2:
+                                        img.set_at((x, y), col_black)
+                                    elif d2 == r2:
+                                        img.set_at((x, y), col_black)
+
+
+
+        img3 = pygame.transform.flip(img, False, True)
+
+        img.blit(img3, (0,0))
+
         return img
 
     def plot_body(self):
@@ -221,22 +323,22 @@ class Butterfly(Thing):
 
         img.blit(img2, (0,0))
 
-        pygame.image.save(img, "butterfly_left_side_body"+self.name+".png")
+        # pygame.image.save(img, "butterfly_left_side_body"+self.name+".png")
         return img
 
     def create_geometry(self):
         # Main left wing, if oriented right along the 0 degrees line
 
         main = [
-                (0.0, 0.0), (0.2, 0.0), (0.9, 0.8), (1.0, 0.9), (0.9, 1.0), (0.2, 0.8),
-                 (0.1, 0.7), (0.0, 0.0)
+                (-0.2, 0.0), (0.2, 0.0), (0.9, 0.8), (1.0, 0.9), (0.9, 1.0), (0.2, 0.8),
+                 (0.1, 0.7), (-0.2, 0.0)
         ]
 
         # Sub left wing, if oriented right along the 0 degrees line
 
         sub = [
-            (0.0, 0.0), (0.1,0.6), (0.0, 0.8), (-0.3, 0.96), (-0.5, 0.9), (-0.8, 0.6),
-            (-1.0, 0.3), (-0.9, 0.2), (0.0, 0.0)
+            (-0.02, 0.0), (0.05,0.6), (0.0, 0.8), (-0.3, 0.96), (-0.5, 0.9), (-0.8, 0.6),
+            (-1.0, 0.3), (-0.9, 0.2), (-0.02, 0.0)
         ]
 
         # Body segments, if oriented right along the 0 degrees line
@@ -256,21 +358,30 @@ class Butterfly(Thing):
 
         if self.physics.check_collides(self.position_limits, self.get_rect()):
             x, y = self.position
-            x += random.randint(-1, 1)
-            y += random.randint(-1, 1)
-            self.position = x,y
+            delta = self.size>>4
+            if delta < 2:
+                delta = 2
+            x += random.randint(-delta, delta)
+            y += random.randint(-delta, delta)
+
+            self.position = x, y
 
             if random.randint(1,40) == 1:
+                self.img_cache = None
                 if self.wings_up:
                     self.wings_up = False
                 else:
                     self.wings_up = True
 
             if random.randint(1,10) == 1:
+                self.img_cache = None
                 self.facing = (self.facing + random.randint(-15,15))%360
 
+            if self.selected or self.targeted:
+                self.wings_up = False
+                self.img_cache = None
 
-        elif self.targeted is None and self.selected is None:
+        else:
             self.alive = False # Offscreen... FOREVER!
             self.targeted = False
             self.selected = False
@@ -291,26 +402,26 @@ class Butterfly(Thing):
             ch = h>>1
 
             # Draw the wings and the body
+            final_img = self.img_cache # Avoid rotation if we can
+            if final_img is None: # Rebuild the butterfly
+                # Work out what the plot locations of the creature are based on scales, transforms and rotations
+                self.img_render_buffer.fill((0,0,0,0))
 
-            # Work out what the plot locations of the creature are based on scales, transforms and rotations
+                self.img_render_buffer.blit(self.texture_body, (0,0)) # Body
 
+                wings = self.texture
+                offset = 0
+                if self.wings_up == True:
+                    wings = pygame.transform.scale(self.texture, (w, h>>1))
+                    offset = (h>>2)
+                self.img_render_buffer.blit(wings, (0, 0+offset)) # Wings
 
-            self.img_render_buffer.fill((0,0,0,0))
-
-            self.img_render_buffer.blit(self.texture_body, (0,0)) # Body
-
-
-            wings = self.texture
-            offset = 0
-            if self.wings_up == True:
-                wings = pygame.transform.scale(self.texture, (w, h>>1))
-                offset = (h>>2)
-            self.img_render_buffer.blit(wings, (0, 0+offset)) # Wings
+                final_img = pygame.transform.rotate(self.img_render_buffer, self.facing)
+                self.img_cache = final_img
 
             cw = minx+cw
             ch = miny+ch
 
-            final_img = pygame.transform.rotate(self.img_render_buffer, self.facing)
             minx = cw-(final_img.get_width()>>1)
             miny = ch-(final_img.get_height()>>1)
 
@@ -323,6 +434,23 @@ class Player:
         self.score = 0
         self.inventory = [ Jar(), Jar(), Jar(), Jar()]
         self.stats = Statistics()
+        self.position = (0,0)
+        self.direction = 0
+        self.speed = 0
+
+    def draw(self, display):
+        ox, oy = display.position
+
+        # Only draw this Thing if the Thing is within the display
+        bounds = self.get_rect()
+        #print bounds
+        # print "draw",bounds
+        if self.physics.check_collides((ox, oy, display.width, display.height), bounds):
+            # print "Drawing",self.name
+            minx, miny, w, h = bounds
+            cw = w>>1
+            ch = h>>1
+
 
 class Jar():
     def __init__(self):
@@ -450,12 +578,20 @@ class Tools:
 def main_loop():
     display = Display(World("Butterflies"), (800,800), (0,0))
     ui_colours = Colour()
-    tools = Tools(display, "Toolbar", (0, display.surface.get_height()-(display.surface.get_height()>>3),
-                                       display.surface.get_width(), display.surface.get_height()>>3))
 
-    display_world_region = (0,0,display.surface.get_width(),display.surface.get_height()-tools.get_height())
+    if False: # Ignore for now - more ambitious game than my time allows in the jam period
+        tools = Tools(display, "Toolbar", (0, display.surface.get_height()-(display.surface.get_height()>>3),
+                                           display.surface.get_width(), display.surface.get_height()>>3))
 
-    for i in xrange(0,random.randint(10,100)):
+        display_world_region = (0,0,display.surface.get_width(),display.surface.get_height()-tools.get_height())
+
+    display_world_region = (0,0,display.surface.get_width(),display.surface.get_height())
+
+    particles = []
+
+    MAX_ITEMS = 20
+
+    for i in xrange(0,random.randint(10,50)):
         Butterfly(display, ("Thing"+str(i)), display_world_region)
 
     # Main loop
@@ -466,11 +602,29 @@ def main_loop():
 
     selected = None
     targeted = None
+
+    targets = []
     mousepos = -999,-999 # Default
     while keepGoing:
         if iterationCount % 10000 == 0:
             print "Number of elements",len(display.world.elements)
+
         iterationCount += 1
+
+        potentials = display.world.get_elements()
+        if iterationCount % 1000 == 0:
+            if random.randint(1, 10) == 1 and len(targets) > 0:
+                targets.pop(0)
+            if len(potentials) > 0:
+                potential = potentials[random.randint(0, len(potentials) - 1)]
+                if potential.alive and potential not in targets:
+                    targets.append(potential)  # Add a new target
+
+        if len(potentials) < MAX_ITEMS:
+            if random.randint(1,100) == 1:
+                Butterfly(display, ("Butterfly"), display_world_region)
+
+
 
         # Tick the world
         # print "Ticking",len(display.world.elements)
@@ -485,6 +639,34 @@ def main_loop():
             selected.draw_highlight(display, ui_colours.get("red") )  # Red
         if targeted is not None and targeted.alive:
             targeted.draw_highlight(display, ui_colours.get("green") )  # Green
+
+        cursor_x = 2
+        for s in targets:
+            # Draw targeting object
+            if s.icon is not None and s.alive:
+                display.surface.blit(s.icon,(cursor_x, 2))
+
+                # Is there a match?
+                if s.physics.check_collides(s.get_rect(), (cursor_x,2,s.icon.get_width(),s.icon.get_height())):
+                    print "Matched!"
+                    s.alive = False
+
+                    if len(particles) < 30:
+                        for i in xrange(0, random.randint(5,15)):
+                            particles.append((s.position, 0.3-random.random()*(0.6), 0.1-random.random()*0.2))
+                cursor_x += 2 + s.icon.get_width()
+
+        newParticles = []
+        for p in particles:
+            (x, y), dx, dy = p
+            pygame.draw.circle(display.surface, (255, 255, 255, 255), (int(x),int(y)), random.randint(2,5), 0)
+            x += dx
+            y += dy
+            dy += 0.01
+            if 0 <= x < display.surface.get_width() and 0 <= y < display.surface.get_height():
+                newParticles.append(((x,y), dx, dy))
+        particles = newParticles
+
 
         for event in display.update():
             if event.type == pygame.QUIT:
