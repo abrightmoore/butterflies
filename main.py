@@ -132,7 +132,7 @@ class Thing(object):
 class Butterfly(Thing):
     def __init__(self, display, name, position_limits):
         icon_size = 64
-        position = random.randint(0, display.surface.get_width()),random.randint(0, display.surface.get_height())
+        position = random.randint(0, display.surface.get_width()),random.randint(display.surface.get_height()>>1, display.surface.get_height())
         radius = random.randint(icon_size>>1,128)
         super(Butterfly,self).__init__(display.world, position, radius, name)
         self.position_limits = position_limits
@@ -182,6 +182,18 @@ class Butterfly(Thing):
         icon.blit(self.texture_body, (0, 0))
         icon.blit(self.texture, (0, 0))
         self.icon = pygame.transform.scale(pygame.transform.rotate(icon,90),(icon_size,icon_size))
+
+    def draw_highlight(self, display, colour):
+        ox, oy = display.position
+
+        # Only draw this Thing if the Thing is within the display
+        bounds = self.get_rect()
+        #print "draw",bounds
+        if self.physics.check_collides((ox, oy, display.width, display.height), bounds):
+            #print "Drawing",self.name
+            minx, miny, w, h = bounds
+            # pygame.draw.rect(display.surface, colour, (minx, miny, w, h), 2)
+            pygame.draw.circle(display.surface, colour, (int(minx+(w>>1)), int(miny+(h>>1))), (w>>1), random.randint(1,4))
 
 
     def jitter(self, points, amount):
@@ -277,7 +289,7 @@ class Butterfly(Thing):
                             if 0 <= x < img.get_width() and 0 <= y < img.get_height():
                                 R, G, B, A = img.get_at((x, y))
                                 if A is not 0:
-                                    print "Hello"
+                                    # print "Hello"
                                     dy = y-posy
                                     d2 = dx*dx+dy*dy
                                     if d2 < r2:
@@ -438,6 +450,9 @@ class Player:
         self.direction = 0
         self.speed = 0
 
+    def add_score(self, score):
+        self.score += score
+
     def draw(self, display):
         ox, oy = display.position
 
@@ -484,10 +499,13 @@ class Display:
         self.width, self.height = self.size
         self.position = position
 
-        self.labelfont = None
-        self.labelfontbig = None
+        fontlist = pygame.font.get_fonts()
+
         self.initialised = False
         self.surface = self.initialiseDisplay(self.world.get_description())
+        self.labelfont = pygame.font.SysFont(fontlist[0], 32)  #random.randint(0,len(fontlist)-1)], 32)
+        self.labelfontbig = pygame.font.SysFont(fontlist[0], 64)  #random.randint(0,len(fontlist)-1)], 64)
+
 
     def initialiseDisplay(self, description):
         print "Creating Surface and Window"
@@ -546,7 +564,7 @@ class Statistics:
 class Tools:
     def __init__(self, display, name, rect):
         self.rect = rect
-        print self.rect
+        # print self.rect
         self.name = name
         self.alive = True
         self.colour_background = Colour().get("brown")
@@ -577,6 +595,10 @@ class Tools:
 
 def main_loop():
     display = Display(World("Butterflies"), (800,800), (0,0))
+    logo_img = pygame.image.load("WF4_t_w.png")
+    logo = logo_img
+    logo_shrink = 0
+    logo_max_shrink = logo_img.get_width()>>1
     ui_colours = Colour()
 
     if False: # Ignore for now - more ambitious game than my time allows in the jam period
@@ -588,13 +610,18 @@ def main_loop():
     display_world_region = (0,0,display.surface.get_width(),display.surface.get_height())
 
     particles = []
+    scoreticles = []
 
-    MAX_ITEMS = 20
+    MAX_ITEMS = 30
 
     for i in xrange(0,random.randint(10,50)):
         Butterfly(display, ("Thing"+str(i)), display_world_region)
 
     # Main loop
+    pygame.mixer_music.load("ABMusic.mp3")
+    pygame.mixer_music.play(-1)
+
+
     player = Player()
 
     keepGoing = True
@@ -603,16 +630,22 @@ def main_loop():
     selected = None
     targeted = None
 
+    instructions_done = False
+
     targets = []
     mousepos = -999,-999 # Default
     while keepGoing:
+
+        if iterationCount > 300 and logo_shrink < logo_max_shrink:
+            logo = pygame.transform.scale(logo_img,(logo_img.get_width()-logo_shrink, logo_img.get_height()-logo_shrink))
+            logo_shrink += 1
         if iterationCount % 10000 == 0:
             print "Number of elements",len(display.world.elements)
 
         iterationCount += 1
 
         potentials = display.world.get_elements()
-        if iterationCount % 1000 == 0:
+        if iterationCount %500 == 0:
             if random.randint(1, 10) == 1 and len(targets) > 0:
                 targets.pop(0)
             if len(potentials) > 0:
@@ -636,25 +669,45 @@ def main_loop():
         display.draw()
         # Special UI hints to the player
         if selected is not None and selected.alive:
-            selected.draw_highlight(display, ui_colours.get("red") )  # Red
+            selected.draw_highlight(display, (136, 255, 242, random.randint(30,170)) )  # Red
         if targeted is not None and targeted.alive:
             targeted.draw_highlight(display, ui_colours.get("green") )  # Green
 
         cursor_x = 2
+        newTargets = []
         for s in targets:
             # Draw targeting object
             if s.icon is not None and s.alive:
                 display.surface.blit(s.icon,(cursor_x, 2))
 
+                if instructions_done == False: # Hint for the player
+                    s.draw_highlight(display, (136, 255, 242, random.randint(30, 170)))
+                    pygame.draw.line(display.surface, (136, 255, 242, random.randint(30, 170)), (0,s.icon.get_height()+2), (display.surface.get_width()>>1,s.icon.get_height()+2))
+
                 # Is there a match?
                 if s.physics.check_collides(s.get_rect(), (cursor_x,2,s.icon.get_width(),s.icon.get_height())):
-                    print "Matched!"
+                    # print "Matched!"
+                    score = s.size*10
+                    centre_pos = (cursor_x+(s.icon.get_width()>>1),(s.icon.get_height()>>1))
+                    # print len(targets)
+                    if len(targets) == 1:
+                        score = score+score
+                        score_img = display.labelfont.render("! CLEAR BONUS x2 !", 1, (255, 255, 255, 255))
+                        scoreticles.append((((display.surface.get_width()>>1)-(score_img.get_width()>>1),score_img.get_height()>>1), 0.6, score_img))
+                    player.add_score(score)
+
+                    score_img = display.labelfont.render(str(int(score)), 1, (255, 255, 255, 255))
+                    scoreticles.append((centre_pos, 0.3, score_img ))
+
                     s.alive = False
 
                     if len(particles) < 30:
                         for i in xrange(0, random.randint(5,15)):
-                            particles.append((s.position, 0.3-random.random()*(0.6), 0.1-random.random()*0.2))
+                            particles.append((centre_pos, 0.3-random.random()*(0.6), 0.1-random.random()*0.2))
+                else:
+                    newTargets.append(s)
                 cursor_x += 2 + s.icon.get_width()
+        targets = newTargets
 
         newParticles = []
         for p in particles:
@@ -667,6 +720,38 @@ def main_loop():
                 newParticles.append(((x,y), dx, dy))
         particles = newParticles
 
+        newScores = []
+        for s in scoreticles:
+            (x,y), dy, score_img = s
+            y += dy
+            dy += 0.01
+            if y < display.surface.get_height():
+                display.surface.blit(score_img,(x,y))
+                newScores.append(((x,y),dy,score_img))
+        scoreticles = newScores
+
+
+        # HUD
+
+        scorelabel_w = display.labelfontbig.render(str(int(player.score)), 1, (255, 255, 255, 255))
+        scorelabel_b = display.labelfontbig.render(str(int(player.score)), 1, (0, 0, 0, 128))
+        slw = scorelabel_w.get_width()
+        slh = scorelabel_w.get_height()
+        display.surface.blit(scorelabel_b, ((display.surface.get_width()>>1)-(slw>>1), display.surface.get_height()-slh))
+        display.surface.blit(scorelabel_w,
+                             ((display.surface.get_width() >> 1) - (slw >> 1)-4, display.surface.get_height() - slh-4))
+
+        if iterationCount == 500 or ((iterationCount %800 == 0) and instructions_done == False): # Repeat if no click
+            score_img = display.labelfont.render("Left click select & move to match butterflies", -20, (136, 255, 242, random.randint(30,170)))
+            scoreticles.append((((display.surface.get_width() >> 1) - (score_img.get_width() >> 1),
+                                 64), 0.6, score_img))
+            score_img = display.labelfont.render("Rick click to release", -20, (136, 255, 242, random.randint(30,170)))
+            scoreticles.append((((display.surface.get_width() >> 1) - (score_img.get_width() >> 1),
+                                 96), 0.6, score_img))
+
+        display.surface.blit(logo, (display.surface.get_width()-logo.get_width(),0))
+
+        # Event loop
 
         for event in display.update():
             if event.type == pygame.QUIT:
@@ -675,9 +760,10 @@ def main_loop():
                 mousepos = event.pos
                 if selected is not None:
                     selected.position = mousepos
-                    print selected.position
+                    # print selected.position
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:  # 1 == Left
+                    instructions_done = True
                     for e in display.world.get_elements():
                         if e.alive:
                             if( e.handle_event_click(event.pos) ):
@@ -686,20 +772,12 @@ def main_loop():
                                 player.stats.select_success += 1
                                 break
                 if event.button == 3:  # 3 == Right
-                    for e in display.world.get_elements():
-                        if e.alive:
-                            if( e.handle_event_click(event.pos) ):
-                                targeted = e # Keep a record of who is selected. Overwrite duplicates.
-                                e.targeted = e
-                                if targeted == selected:
-                                    selected.selected = None
-                                    selected = None
-                                    targeted.targeted = None
-                                    targeted = None
-                                player.stats.select_success += 1
-                                break
+                    if selected is not None:
+                        selected.selected = False
+                        selected = None
             else:
-                print event # Placeholder
+                pass
+                # print event # Placeholder
 
 
 
