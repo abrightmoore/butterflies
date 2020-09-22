@@ -508,12 +508,13 @@ class Display:
 
 
     def initialiseDisplay(self, description):
-        print "Creating Surface and Window"
+        # print "Creating Surface and Window"
         pygame.init()
+        pygame.mixer.init()
         surface = pygame.display.set_mode((self.width, self.height), pygame.SRCALPHA)
-        print "Converting the surface to optimise rendering"
+        # print "Converting the surface to optimise rendering"
         surface.convert()
-        print "Changing the caption"
+        # print "Changing the caption"
         pygame.display.set_caption(description)
         self.labelfont = pygame.font.SysFont("monospace", 16)
         self.labelfontbig = pygame.font.SysFont("monospace", 32)
@@ -593,54 +594,69 @@ class Tools:
     def draw_highlight(self, display, colour):
         pass
 
+class Game:
+    def __init__(self):
+        self.level = 0
+        self.levels =   {
+                            "1": {
+                                "butterflies_max": 3,
+                                "flutter": False,
+                                "timer_max": 10000,
+
+                            },
+
+                        }
+
+    def get_level(self, level):
+        return self.levels[str(level)]
+
+
 def main_loop():
-    display = Display(World("Butterflies"), (800,800), (0,0))
+    display = Display(World("Butterflies"), (1600,800), (0,0))
     logo_img = pygame.image.load("WF4_t_w.png")
     logo = logo_img
     logo_shrink = 0
     logo_max_shrink = logo_img.get_width()>>1
     ui_colours = Colour()
 
-    if False: # Ignore for now - more ambitious game than my time allows in the jam period
-        tools = Tools(display, "Toolbar", (0, display.surface.get_height()-(display.surface.get_height()>>3),
-                                           display.surface.get_width(), display.surface.get_height()>>3))
-
-        display_world_region = (0,0,display.surface.get_width(),display.surface.get_height()-tools.get_height())
-
     display_world_region = (0,0,display.surface.get_width(),display.surface.get_height())
 
-    particles = []
-    scoreticles = []
 
-    MAX_ITEMS = 30
-
-    for i in xrange(0,random.randint(10,50)):
-        Butterfly(display, ("Thing"+str(i)), display_world_region)
 
     # Main loop
-    pygame.mixer_music.load("ABMusic.mp3")
+    pygame.mixer_music.load("abmusic.mp3")
     pygame.mixer_music.play(-1)
 
 
     player = Player()
 
-    keepGoing = True
-    iterationCount = 0
 
-    selected = None
-    targeted = None
 
     instructions_done = False
 
+    particles = []
+    scoreticles = []
+    selected = None
+    targeted = None
+    keepGoing = True
+    iterationCount = 0
+
+    MAX_ITEMS = 30
+    for i in xrange(0,random.randint(10,50)):
+        Butterfly(display, ("Thing"+str(i)), display_world_region)
+    fadeText = []
     targets = []
+    level = 0
     mousepos = -999,-999 # Default
     while keepGoing:
-
+        if iterationCount%8000 == 0:
+            level += 1
+            fadeText.append(("LEVEL "+str(level),255))
         if iterationCount > 300 and logo_shrink < logo_max_shrink:
             logo = pygame.transform.scale(logo_img,(logo_img.get_width()-logo_shrink, logo_img.get_height()-logo_shrink))
             logo_shrink += 1
-        if iterationCount % 10000 == 0:
-            print "Number of elements",len(display.world.elements)
+        #if iterationCount % 10000 == 0:
+        #    print "Number of elements",len(display.world.elements)
 
         iterationCount += 1
 
@@ -691,7 +707,7 @@ def main_loop():
                     centre_pos = (cursor_x+(s.icon.get_width()>>1),(s.icon.get_height()>>1))
                     # print len(targets)
                     if len(targets) == 1:
-                        score = score+score
+                        score += player.score
                         score_img = display.labelfont.render("! CLEAR BONUS x2 !", 1, (255, 255, 255, 255))
                         scoreticles.append((((display.surface.get_width()>>1)-(score_img.get_width()>>1),score_img.get_height()>>1), 0.6, score_img))
                     player.add_score(score)
@@ -708,6 +724,16 @@ def main_loop():
                     newTargets.append(s)
                 cursor_x += 2 + s.icon.get_width()
         targets = newTargets
+
+        newFadeText = []
+        for f in fadeText:
+            text, counter = f
+            counter -= 1
+            if counter > 0:
+                text_img = display.labelfontbig.render(text, 1, (counter%255, counter%255, counter%255, 255))
+                display.surface.blit(text_img, ((display.surface.get_width()>>1)-(text_img.get_width()>>1),(display.surface.get_height()>>1)-(text_img.get_height()>>1)))
+                newFadeText.append((text, counter))
+        fadeText = newFadeText
 
         newParticles = []
         for p in particles:
