@@ -1,26 +1,33 @@
 # @TheWorldFoundry
+# 2020-09-27
+#   - Interaction UI simplified - now: click, drag, release
+#   - Disabled 'jitter' when a butterfly is selected, allowing easier shape and pattern compare for player
+#   - Scoring change to "x level" instead of doubling player score on row clear
+#   - Remove reference to right-click release as game is now one-touch for all button types
+
 
 import pygame
 import random
 import math
 import os
 
+
 class Colour:
     def __init__(self):
         self.colours = {
-            "black": (0x05,0x03,0x09,0xff),
-            "white": (0xff,0xff,0xff,0xff),
+            "black": (0x05, 0x03, 0x09, 0xff),
+            "white": (0xff, 0xff, 0xff, 0xff),
             "green": (0x00, 0xa0, 0x00, 0xff),
             "red": (0xa0, 0x00, 0x00, 0xff),
             "brown": (0x70, 0x60, 0x70, 0xff),
-            "transparent": (0x00,0x00,0x00,0xff),
-            "world_background": (0x80,0x70,0x90,0xff)
+            "transparent": (0x00, 0x00, 0x00, 0xff),
+            "world_background": (0x80, 0x70, 0x90, 0xff)
         }
 
     def get(self, key):
         if key not in self.colours:
             # Issue a new random colour if we didn't find the requested one
-            self.colours[key] = (128+random.randint(0,127), 128+random.randint(0,127), 128+random.randint(0,127), 255)
+            self.colours[key] = (128+random.randint(0, 127), 128+random.randint(0, 127), 128+random.randint(0, 127), 255)
         return self.colours[key]
 
 class Physics:
@@ -71,8 +78,8 @@ class Thing(object):
         self.alive = True
         self.world = world
         self.name = name
-        self.position = position # Co-ordinates within the world
-        self.velocity = [0.0, 0.0] # 2Direction (Radians), speed
+        self.position = position  # Co-ordinates within the world
+        self.velocity = [0.0, 0.0]  # 2Direction (Radians), speed
         self.characteristics = {}
         self.animation = None
         self.age = 0
@@ -373,8 +380,9 @@ class Butterfly(Thing):
             delta = self.size>>4
             if delta < 2:
                 delta = 2
-            x += random.randint(-delta, delta)
-            y += random.randint(-delta, delta)
+            if not self.selected:
+                x += random.randint(-delta, delta)
+                y += random.randint(-delta, delta)
 
             self.position = x, y
 
@@ -612,7 +620,7 @@ class Game:
 
 
 def main_loop():
-    display = Display(World("Butterflies"), (1600,800), (0,0))
+    display = Display(World("Butterflies"), (800,800), (0,0))
     logo_img = pygame.image.load("WF4_t_w.png")
     logo = logo_img
     logo_shrink = 0
@@ -707,8 +715,9 @@ def main_loop():
                     centre_pos = (cursor_x+(s.icon.get_width()>>1),(s.icon.get_height()>>1))
                     # print len(targets)
                     if len(targets) == 1:
-                        score += player.score
-                        score_img = display.labelfont.render("! CLEAR BONUS x2 !", 1, (255, 255, 255, 255))
+                        # score += player.score
+                        score += score*(level+1)
+                        score_img = display.labelfont.render("! CLEAR BONUS x"+str(level)+" !", 1, (255, 255, 255, 255))
                         scoreticles.append((((display.surface.get_width()>>1)-(score_img.get_width()>>1),score_img.get_height()>>1), 0.6, score_img))
                     player.add_score(score)
 
@@ -771,9 +780,6 @@ def main_loop():
             score_img = display.labelfont.render("Left click select & move to match butterflies", -20, (136, 255, 242, random.randint(30,170)))
             scoreticles.append((((display.surface.get_width() >> 1) - (score_img.get_width() >> 1),
                                  64), 0.6, score_img))
-            score_img = display.labelfont.render("Rick click to release", -20, (136, 255, 242, random.randint(30,170)))
-            scoreticles.append((((display.surface.get_width() >> 1) - (score_img.get_width() >> 1),
-                                 96), 0.6, score_img))
 
         display.surface.blit(logo, (display.surface.get_width()-logo.get_width(),0))
 
@@ -787,17 +793,17 @@ def main_loop():
                 if selected is not None:
                     selected.position = mousepos
                     # print selected.position
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                instructions_done = True
+                for e in display.world.get_elements():
+                    if e.alive:
+                        if( e.handle_event_click(event.pos) ):
+                            selected = e
+                            e.selected = True
+                            player.stats.select_success += 1
+                            break
+
             elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:  # 1 == Left
-                    instructions_done = True
-                    for e in display.world.get_elements():
-                        if e.alive:
-                            if( e.handle_event_click(event.pos) ):
-                                selected = e
-                                e.selected = True
-                                player.stats.select_success += 1
-                                break
-                if event.button == 3:  # 3 == Right
                     if selected is not None:
                         selected.selected = False
                         selected = None
